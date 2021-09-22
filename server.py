@@ -4,6 +4,9 @@ import re
 import urllib.parse
 from enum import Enum, auto
 import os
+import mimetypes
+from datetime import datetime
+import time
 
 # Copyright 2013 Abram Hindle, Eddie Antonio Santos
 # 
@@ -33,6 +36,7 @@ import os
 
 class MyWebServer(socketserver.BaseRequestHandler):
     requestLine = []
+    dataLines = []
     
     class ServerState(Enum):
         READ_DATA = auto()
@@ -45,15 +49,20 @@ class MyWebServer(socketserver.BaseRequestHandler):
         SERVE_DATA = auto()
         TERMINATE = auto()
 
+    def getDate(self):
+        d = datetime.now()
+        return d.strftime('%a, %d %b %Y %H:%M:%S ') + time.tzname[0]
+
+
     def checkData(self):
         try:
-            print(self.data)
-            dataLines = re.split('\n|\r\n', self.data.decode('utf-8'))
+            # print(self.data)
+            self.dataLines = re.split('\n|\r\n', self.data.decode('utf-8'))
         except Exception as e:
             print('An error occured: ' + e)
             return self.ServerState.INVALID_REQUEST
 
-        requestLine = dataLines[0].split()
+        requestLine = self.dataLines[0].split()
         if len(requestLine) != 3:
             requestLine = []
             return self.ServerState.INVALID_REQUEST
@@ -84,30 +93,33 @@ class MyWebServer(socketserver.BaseRequestHandler):
     
     def handle301(self):
         path = self.requestLine[1]
-        self.request.sendall(bytearray("HTTP/1.1 301 Moved Permanently\r\nLocation: http://127.0.0.1:8080" + path + '/\r\n' + "\r\n",'utf-8'))
+        self.request.sendall(bytearray("HTTP/1.1 301 Moved Permanently\r\nDate: " + self.getDate() + "\r\nLocation: http://127.0.0.1:8080" + path + '/\r\n' + "Connection: close\r\n\r\n",'utf-8'))
         return self.ServerState.TERMINATE
 
     def handle400(self):
-        self.request.sendall(bytearray("HTTP/1.1 400 Bad Request\r\n\r\n",'utf-8'))
-        return self.ServerState.TERMINATE
-
-    def handle405(self):
-        self.request.sendall(bytearray("HTTP/1.1 405 Method Not Allowed\r\n\r\n",'utf-8'))
+        self.request.sendall(bytearray("HTTP/1.1 400 Bad Request\r\nDate: " + self.getDate() + "\r\nConnection: close\r\n\r\n",'utf-8'))
         return self.ServerState.TERMINATE
 
     def handle404(self):
-        self.request.sendall(bytearray("HTTP/1.1 404 Page Not Found\r\n\r\n",'utf-8'))
+        self.request.sendall(bytearray("HTTP/1.1 404 Page Not Found\r\nDate: " + self.getDate() + "\r\nConnection: close\r\n\r\n",'utf-8'))
+        return self.ServerState.TERMINATE
+
+    def handle405(self):
+        self.request.sendall(bytearray("HTTP/1.1 405 Method Not Allowed\r\nDate: " + self.getDate() + "\r\nAllow: GET\r\nConnection: close\r\n\r\n",'utf-8'))
         return self.ServerState.TERMINATE
 
     def serve(self):
         path = self.requestLine[1]
         if os.path.isdir('./www' + path):
-            f = open('./www' + path + 'index.html')
-            self.request.sendall(bytearray("HTTP/1.1 200 OK\r\n\r\n" + f.read(),'utf-8'))
+            f = open('./www' + path + 'index.html')            
+            self.request.sendall(bytearray("HTTP/1.1 200 OK\r\nDate: " + self.getDate() + "\r\nContent-Type: text/html;\r\nConnection: close\r\n\r\n" + f.read(),'utf-8'))
             f.close()
         else:
             f = open('./www' + path)
-            self.request.sendall(bytearray("HTTP/1.1 200 OK\r\n\r\n" + f.read(),'utf-8'))
+            mime = mimetypes.guess_type('./www' + path)[0]
+            if not mime:
+                mime = 'application/octet-stream'
+            self.request.sendall(bytearray("HTTP/1.1 200 OK\r\nDate: " + self.getDate() + "\r\nContent-Type: " + mime + ";\r\nConnection: close\r\n\r\n" + f.read(),'utf-8'))
             f.close()
         return self.ServerState.TERMINATE
 
@@ -129,7 +141,7 @@ class MyWebServer(socketserver.BaseRequestHandler):
         while state is not self.ServerState.TERMINATE:
             func = switcher.get(state)
             state = func()
-            print(state)
+            # print(state)
 
 if __name__ == "__main__":
     HOST, PORT = "localhost", 8080
