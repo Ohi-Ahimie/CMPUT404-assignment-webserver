@@ -33,6 +33,7 @@ import time
 
 # try: curl -v -X GET http://127.0.0.1:8080/
 
+# switcher code based on: https://jaxenter.com/implement-switch-case-statement-python-138315.html
 
 class MyWebServer(socketserver.BaseRequestHandler):
     requestLine = []
